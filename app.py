@@ -46,7 +46,7 @@ st.markdown("""
         color: #e6edf3;
     }
 
-    /* Fix för att Streamlits standard-topbar inte ska blockera sökfältet */
+    /* Fix för att Streamlits standard-topbar inte ska blockera */
     header[data-testid="stHeader"] {
         background: transparent !important;
         pointer-events: none;
@@ -174,6 +174,13 @@ st.markdown("""
         font-weight: 600 !important;
         text-align: center !important;
         padding: 8px 0 !important;
+    }
+
+    /* Fix för att ta bort eller stajla den svarta popup-rutan/historiken vid sök */
+    div[data-baseweb="popover"], div[data-baseweb="menu"] {
+        background-color: #0d111a !important;
+        border: 1px solid rgba(255, 255, 255, 0.15) !important;
+        border-radius: 12px !important;
     }
 
     div[data-testid="stSidebar"] {
@@ -346,7 +353,6 @@ if query:
             )
             cards_html_list.append(card_single)
 
-        # KOMPONENT SOM RENDERAR GRID + 3D TILT JAVASCRIPT ISOLERAT
         component_html = f"""
         <!DOCTYPE html>
         <html>
@@ -386,7 +392,6 @@ if query:
                 opacity: 1;
                 filter: brightness(100%);
             }}
-            /* Dämpar övriga kort vid hover */
             .cards-grid:hover .media-card {{
                 opacity: 0.5;
                 filter: brightness(70%);
@@ -404,7 +409,7 @@ if query:
                 border-radius: 12px;
                 margin-bottom: 24px;
                 background: transparent;
-                perspective: 1000px; /* Gör 3D-tilten synlig */
+                perspective: 1000px;
             }}
             .card-image {{
                 width: 100%;
@@ -510,7 +515,6 @@ if query:
             </div>
 
             <script>
-                // Dynamisk Apple TV 3D-tilt för enbart thumbnailen
                 document.querySelectorAll('.card-image-container').forEach(container => {{
                     const img = container.querySelector('.card-image');
                     if (!img) return;
