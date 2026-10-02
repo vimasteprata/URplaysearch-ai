@@ -534,7 +534,7 @@ if query:
                         img.style.transform = 'scale(1) rotateX(0deg) rotateY(0deg)';
                         img.style.transition = 'transform 0.5s ease';
                     }});
-                }));
+                }});
             </script>
         </body>
         </html>
