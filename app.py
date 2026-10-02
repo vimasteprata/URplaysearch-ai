@@ -1,0 +1,547 @@
+import os
+import zipfile
+import urllib.request
+import streamlit as st
+import streamlit.components.v1 as components
+import chromadb
+from chromadb.utils import embedding_functions
+
+# --- AUTOMATISK NEDLADDNING AV DATABAS FRÅN DROPBOX (FÖR MOLNET) ---
+DB_DIR = "./urplay_chroma_db"
+ZIP_FILE = "urplay_chroma_db.zip"
+DB_DOWNLOAD_URL = "https://www.dropbox.com/scl/fi/7yisqlz86rzb1cmj0h3sr/urplay_chroma_db.zip?rlkey=ama039tkcv8ej8tq7dnxauq6i&dl=1"
+
+if not os.path.exists(DB_DIR):
+    st.info("🚀 Första uppstart i molnet: Laddar ner och packar upp UR Play-databasen (125 MB) från Dropbox... Detta kan ta en liten stund.")
+    
+    # Ladda ner filen
+    urllib.request.urlretrieve(DB_DOWNLOAD_URL, ZIP_FILE)
+    
+    # Packa upp zip-filen
+    with zipfile.ZipFile(ZIP_FILE, 'r') as zip_ref:
+        zip_ref.extractall(".")
+        
+    # Ta bort zip-filen för att spara utrymme på servern
+    if os.path.exists(ZIP_FILE):
+        os.remove(ZIP_FILE)
+    
+    st.success("Databasen är klar! Startar sökgränssnittet...")
+    st.rerun()
+# -----------------------------------------------------------------
+
+# Sidkonfiguration
+st.set_page_config(
+    page_title="UR Play AI Search",
+    page_icon="🎬",
+    layout="wide",
+    initial_sidebar_state="collapsed"
+)
+
+# Custom CSS för Streamlit-gränssnittet (sökfält, knappar m.m.)
+st.markdown("""
+<style>
+    /* Mörkt tema & bakgrund */
+    .stApp {
+        background-color: #06080d;
+        color: #e6edf3;
+    }
+
+    /* Header & Logga */
+    .brand-header {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 12px;
+        padding: 3rem 1rem 1.5rem 1rem;
+        margin-bottom: 0.5rem;
+    }
+
+    .ur-logo-row {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+    }
+
+    .ur-logo {
+        background: linear-gradient(135deg, #0055aa 0%, #003d7a 100%);
+        color: #ffffff;
+        font-weight: 900;
+        font-size: 3rem;
+        padding: 8px 26px;
+        border-radius: 14px;
+        letter-spacing: -0.05em;
+        box-shadow: 0 10px 30px rgba(0, 85, 170, 0.55), inset 0 1px 1px rgba(255, 255, 255, 0.4);
+    }
+
+    .ai-badge-title {
+        font-size: 3.5rem;
+        font-weight: 900;
+        letter-spacing: -0.04em;
+        background: linear-gradient(90deg, #ffffff 0%, #a78bfa 35%, #60a5fa 70%, #f472b6 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        text-shadow: 0 10px 35px rgba(167, 139, 250, 0.25);
+    }
+
+    .header-subtitle {
+        color: #8b949e;
+        font-size: 1.15rem;
+        font-weight: 400;
+        margin-top: -6px;
+    }
+
+    /* Centrera knapp-raden */
+    .button-container {
+        display: flex;
+        justify-content: center;
+        gap: 12px;
+        max-width: 600px;
+        margin: 0 auto 2rem auto;
+    }
+
+    /* Styling för Streamlits knappar */
+    div.stButton > button {
+        background-color: rgba(255, 255, 255, 0.04) !important;
+        color: #98a6b5 !important;
+        border: 1px solid rgba(255, 255, 255, 0.12) !important;
+        border-radius: 30px !important;
+        font-weight: 600 !important;
+        font-size: 0.95rem !important;
+        padding: 0.65rem 1.6rem !important;
+        transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1) !important;
+        backdrop-filter: blur(10px);
+        box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+    }
+
+    div.stButton > button:hover {
+        background-color: rgba(255, 255, 255, 0.12) !important;
+        color: #ffffff !important;
+        border-color: rgba(255, 255, 255, 0.35) !important;
+        transform: translateY(-2px);
+        box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
+    }
+
+    div.stButton > button[kind="primary"] {
+        background: linear-gradient(135deg, #0055aa 0%, #1f6feb 100%) !important;
+        color: #ffffff !important;
+        border: 1px solid #58a6ff !important;
+        box-shadow: 0 0 20px rgba(31, 111, 235, 0.5) !important;
+    }
+
+    /* Sökfält */
+    div[data-testid="stTextInput"] {
+        max-width: 720px;
+        margin: 0 auto 3rem auto;
+    }
+
+    div[data-testid="stTextInput"] > div > div {
+        background: #0d111a !important;
+        border-radius: 24px !important;
+        border: 1px solid rgba(255, 255, 255, 0.15) !important;
+        padding: 10px 20px !important;
+        box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6);
+        transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+        position: relative;
+    }
+
+    @keyframes siriGlow {
+        0% { box-shadow: 0 0 20px rgba(167, 139, 250, 0.5), 0 0 40px rgba(96, 165, 250, 0.3); }
+        50% { box-shadow: 0 0 30px rgba(244, 114, 182, 0.6), 0 0 50px rgba(167, 139, 250, 0.4); }
+        100% { box-shadow: 0 0 20px rgba(167, 139, 250, 0.5), 0 0 40px rgba(96, 165, 250, 0.3); }
+    }
+
+    div[data-testid="stTextInput"] > div > div:focus-within {
+        border-color: #a78bfa !important;
+        animation: siriGlow 3s infinite ease-in-out;
+        background: #111622 !important;
+        transform: scale(1.015);
+    }
+
+    div[data-testid="stTextInput"] input {
+        color: #ffffff !important;
+        font-size: 1.25rem !important;
+        font-weight: 600 !important;
+        text-align: center !important;
+        padding: 8px 0 !important;
+    }
+
+    div[data-testid="stSidebar"] {
+        background-color: #0d111a;
+        border-right: 1px solid #1f2430;
+    }
+</style>
+""", unsafe_allow_html=True)
+
+@st.cache_resource
+def load_db():
+    ef = embedding_functions.SentenceTransformerEmbeddingFunction(
+        model_name="sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+    )
+    client = chromadb.PersistentClient(path="./urplay_chroma_db")
+    return client.get_collection(name="urplay_programs", embedding_function=ef)
+
+# Session states
+if "kind_type" not in st.session_state:
+    st.session_state.kind_type = "Båda"
+
+if "visible_count" not in st.session_state:
+    st.session_state.visible_count = 12
+
+if "last_query" not in st.session_state:
+    st.session_state.last_query = ""
+
+# Header
+st.markdown("""
+<div class="brand-header">
+    <div class="ur-logo-row">
+        <div class="ur-logo">UR</div>
+        <div class="ai-badge-title">PLAY AI SEARCH</div>
+    </div>
+    <div class="header-subtitle">Semantisk AI-sökning bland 22 000+ serier och avsnitt</div>
+</div>
+""", unsafe_allow_html=True)
+
+# Snabbknappar
+st.markdown('<div class="button-container">', unsafe_allow_html=True)
+btn_col1, btn_col2, btn_col3 = st.columns([1, 1, 1])
+
+with btn_col1:
+    if st.button("📁 Enbart Program", use_container_width=True, type="primary" if st.session_state.kind_type == "Program" else "secondary"):
+        st.session_state.kind_type = "Program"
+        st.session_state.visible_count = 12
+        st.rerun()
+
+with btn_col2:
+    if st.button("📺 Enbart Avsnitt", use_container_width=True, type="primary" if st.session_state.kind_type == "Avsnitt" else "secondary"):
+        st.session_state.kind_type = "Avsnitt"
+        st.session_state.visible_count = 12
+        st.rerun()
+
+with btn_col3:
+    if st.button("🎬 Båda", use_container_width=True, type="primary" if st.session_state.kind_type == "Båda" else "secondary"):
+        st.session_state.kind_type = "Båda"
+        st.session_state.visible_count = 12
+        st.rerun()
+
+st.markdown('</div>', unsafe_allow_html=True)
+
+# Sökfält
+query = st.text_input("", value="matematik på teckenspråk", placeholder="🔍 Sök vad du vill titta på...")
+
+if query != st.session_state.last_query:
+    st.session_state.visible_count = 12
+    st.session_state.last_query = query
+
+with st.sidebar:
+    st.markdown("### 🎛️ Inställningar")
+    only_sign_language = st.checkbox("🤟 Enbart teckenspråk", value=False)
+
+if query:
+    try:
+        collection = load_db()
+        query_lower = query.lower()
+        
+        is_sign_search = "teckenspråk" in query_lower or "teckenspråkstolkad" in query_lower or only_sign_language
+
+        if is_sign_search:
+            clean_query = query_lower.replace("på teckenspråk", "").replace("teckenspråkstolkad", "").replace("teckenspråk", "").strip()
+            search_text = clean_query if clean_query else query
+            where_filter = {"is_sign_language": True}
+        else:
+            search_text = query
+            where_filter = None
+
+        fetch_limit = 300
+        
+        if where_filter:
+            results = collection.query(query_texts=[search_text], n_results=fetch_limit, where=where_filter)
+        else:
+            results = collection.query(query_texts=[search_text], n_results=fetch_limit)
+
+        all_matching_results = []
+        
+        if results and "ids" in results and len(results["ids"][0]) > 0:
+            for i in range(len(results["ids"][0])):
+                meta = results["metadatas"][0][i]
+                doc = results["documents"][0][i]
+                dist = results["distances"][0][i]
+                match_pct = round(max(0, (1 - dist) * 100), 1)
+                
+                kind_str = str(meta.get("kind", "")).lower()
+                url_str = str(meta.get("url", "")).lower()
+                
+                is_episode = (kind_str == "avsnitt") or ("/program/" in url_str) or bool(meta.get("series_title"))
+                
+                if st.session_state.kind_type == "Program" and is_episode:
+                    continue
+                if st.session_state.kind_type == "Avsnitt" and not is_episode:
+                    continue
+                    
+                all_matching_results.append({
+                    "meta": meta,
+                    "doc": doc,
+                    "match_pct": match_pct,
+                    "is_episode": is_episode
+                })
+                
+        visible_items = all_matching_results[:st.session_state.visible_count]
+        
+        st.markdown(f"##### Visar {len(visible_items)} av {len(all_matching_results)} träffar ({st.session_state.kind_type})")
+        
+        if not visible_items:
+            st.info(f"Inga resultat hittades för '{st.session_state.kind_type}'. Prova att klicka på 'Båda' eller bredda sökordet.")
+
+        cards_html_list = []
+        for item in visible_items:
+            meta = item["meta"]
+            doc = item["doc"]
+            match_pct = item["match_pct"]
+            is_episode = item["is_episode"]
+            
+            raw_id = str(meta.get("id", ""))
+            numeric_id = raw_id.split("-")[0] if "-" in raw_id else raw_id
+            
+            image_url = f"https://assets.ur.se/id/{numeric_id}/images/1_xl.jpg" if numeric_id else ""
+            
+            badges = ""
+            if is_episode:
+                badges += '<span class="badge badge-episode">📺 AVSNITT</span>'
+            else:
+                badges += '<span class="badge badge-program">📁 SERIE / PROGRAM</span>'
+            
+            if meta.get("is_sign_language") or "teckenspråk" in (meta.get("title","") + doc).lower():
+                badges += '<span class="badge badge-sign">🤟 TECKENSPRÅK</span>'
+            
+            series_html = f'<div class="series-name">Del av: {meta["series_title"]}</div>' if meta.get("series_title") else '<div class="series-name">&nbsp;</div>'
+            image_html = f'<div class="card-image-container"><img src="{image_url}" class="card-image" alt="{meta["title"]}" onerror="this.parentNode.style.display=\'none\';"></div>' if image_url else ""
+
+            card_single = (
+                f'<div class="media-card">'
+                f'<div>'
+                f'{image_html}'
+                f'<div class="badge-bar">{badges}</div>'
+                f'<div class="card-title">{meta["title"]}</div>'
+                f'{series_html}'
+                f'<div class="card-desc">{doc}</div>'
+                f'</div>'
+                f'<div>'
+                f'<div class="relevance-box">'
+                f'<span style="font-size:0.8rem; color:#8b949e;">AI Matchning</span>'
+                f'<span class="relevance-score">⚡ {match_pct}%</span>'
+                f'</div>'
+                f'<a href="{meta["url"]}" target="_blank" class="play-button">▶ Titta på UR Play</a>'
+                f'</div>'
+                f'</div>'
+            )
+            cards_html_list.append(card_single)
+
+        # KOMPONENT SOM RENDERAR GRID + 3D TILT JAVASCRIPT ISOLERAT
+        component_html = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+        <style>
+            * {{
+                box-sizing: border-box;
+                margin: 0;
+                padding: 0;
+                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            }}
+            body {{
+                background-color: transparent;
+                color: #e6edf3;
+                padding: 10px 5px 30px 5px;
+            }}
+            .cards-grid {{
+                display: grid;
+                grid-template-columns: repeat(3, 1fr);
+                gap: 24px;
+            }}
+            @media (max-width: 992px) {{
+                .cards-grid {{
+                    grid-template-columns: repeat(1, 1fr);
+                }}
+            }}
+            .media-card {{
+                background: #10141d;
+                border: 1px solid #1f2430;
+                border-radius: 16px;
+                padding: 18px;
+                display: flex;
+                flex-direction: column;
+                justify-content: space-between;
+                transition: opacity 0.3s ease, filter 0.3s ease, background 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
+                box-shadow: 0 6px 18px rgba(0, 0, 0, 0.4);
+                opacity: 1;
+                filter: brightness(100%);
+            }}
+            /* Dämpar övriga kort vid hover */
+            .cards-grid:hover .media-card {{
+                opacity: 0.5;
+                filter: brightness(70%);
+            }}
+            .cards-grid .media-card:hover {{
+                opacity: 1 !important;
+                filter: brightness(108%) !important;
+                border-color: rgba(88, 166, 255, 0.4);
+                background: #131926;
+                box-shadow: 0 12px 30px rgba(0, 0, 0, 0.6), 0 0 20px rgba(88, 166, 255, 0.15);
+            }}
+            .card-image-container {{
+                width: 100%;
+                height: 220px;
+                border-radius: 12px;
+                margin-bottom: 24px;
+                background: transparent;
+                perspective: 1000px; /* Gör 3D-tilten synlig */
+            }}
+            .card-image {{
+                width: 100%;
+                height: 100%;
+                object-fit: cover;
+                border-radius: 12px;
+                display: block;
+                will-change: transform;
+                transition: transform 0.1s ease-out;
+                -webkit-box-reflect: below 0px linear-gradient(to bottom, rgba(255,255,255,0.25) 0%, rgba(255,255,255,0) 70%);
+            }}
+            .badge-bar {{
+                display: flex;
+                gap: 6px;
+                margin-bottom: 10px;
+                margin-top: 10px;
+                flex-wrap: wrap;
+            }}
+            .badge {{
+                font-size: 0.7rem;
+                font-weight: 700;
+                text-transform: uppercase;
+                padding: 4px 10px;
+                border-radius: 20px;
+                letter-spacing: 0.04em;
+            }}
+            .badge-episode {{
+                background: rgba(96, 165, 250, 0.15);
+                color: #60a5fa;
+                border: 1px solid rgba(96, 165, 250, 0.3);
+            }}
+            .badge-program {{
+                background: rgba(52, 211, 153, 0.15);
+                color: #34d399;
+                border: 1px solid rgba(52, 211, 153, 0.3);
+            }}
+            .badge-sign {{
+                background: rgba(251, 191, 36, 0.15);
+                color: #fbbf24;
+                border: 1px solid rgba(251, 191, 36, 0.3);
+            }}
+            .card-title {{
+                font-size: 1.25rem;
+                font-weight: 700;
+                color: #f0f6fc;
+                margin-bottom: 4px;
+                line-height: 1.3;
+            }}
+            .series-name {{
+                color: #8b949e;
+                font-size: 0.88rem;
+                font-weight: 500;
+                margin-bottom: 12px;
+            }}
+            .card-desc {{
+                color: #8b949e;
+                font-size: 0.9rem;
+                line-height: 1.45;
+                margin-bottom: 16px;
+                display: -webkit-box;
+                -webkit-line-clamp: 3;
+                -webkit-box-orient: vertical;
+                overflow: hidden;
+            }}
+            .relevance-box {{
+                background: rgba(255, 255, 255, 0.03);
+                border-radius: 8px;
+                padding: 8px 12px;
+                margin-bottom: 12px;
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+            }}
+            .relevance-score {{
+                font-size: 0.85rem;
+                font-weight: 700;
+                color: #58a6ff;
+            }}
+            .play-button {{
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                gap: 8px;
+                width: 100%;
+                background: linear-gradient(90deg, #0055aa 0%, #1f6feb 100%);
+                color: #ffffff !important;
+                font-weight: 600;
+                font-size: 0.95rem;
+                padding: 11px 16px;
+                border-radius: 8px;
+                text-decoration: none !important;
+                transition: all 0.2s ease;
+            }}
+            .play-button:hover {{
+                background: linear-gradient(90deg, #1f6feb 0%, #388bfd 100%);
+                transform: scale(1.02);
+            }}
+        </style>
+        </head>
+        <body>
+            <div class="cards-grid">
+                {"".join(cards_html_list)}
+            </div>
+
+            <script>
+                // Dynamisk Apple TV 3D-tilt för enbart thumbnailen
+                document.querySelectorAll('.card-image-container').forEach(container => {{
+                    const img = container.querySelector('.card-image');
+                    if (!img) return;
+
+                    container.addEventListener('mousemove', (e) => {{
+                        const rect = container.getBoundingClientRect();
+                        const x = e.clientX - rect.left;
+                        const y = e.clientY - rect.top;
+                        
+                        const centerX = rect.width / 2;
+                        const centerY = rect.height / 2;
+
+                        const rotateX = -((y - centerY) / centerY) * 8;
+                        const rotateY = ((x - centerX) / centerX) * 8;
+
+                        img.style.transform = `scale(1.04) rotateX(${{rotateX}}deg) rotateY(${{rotateY}}deg)`;
+                        img.style.transition = 'transform 0.05s ease-out';
+                    }});
+
+                    container.addEventListener('mouseleave', () => {{
+                        img.style.transform = 'scale(1) rotateX(0deg) rotateY(0deg)';
+                        img.style.transition = 'transform 0.5s ease';
+                    }});
+                }});
+            </script>
+        </body>
+        </html>
+        """
+
+        rows = (len(visible_items) + 2) // 3
+        calculated_height = max(600, rows * 560 + 40)
+        
+        components.html(component_html, height=calculated_height, scrolling=False)
+
+        if len(visible_items) < len(all_matching_results):
+            st.write("")
+            load_col1, load_col2, load_col3 = st.columns([2, 2, 2])
+            with load_col2:
+                if st.button("➕ Visa fler resultat", use_container_width=True):
+                    st.session_state.visible_count += 12
+                    st.rerun()
+
+    except Exception as e:
+        st.error(f"Ett fel uppstod vid sökningen: {e}")
