@@ -248,13 +248,11 @@ search_component_html = f"""
     <script>
         const input = document.getElementById('searchInput');
         input.addEventListener('input', (e) => {{
-            // Skicka sökordet till Streamlit via URL-parameter
             const url = new URL(window.parent.location.href);
             url.searchParams.set('q', e.target.value);
             window.parent.history.replaceState({{}}, '', url);
         }});
         
-        // Trigga en uppdatering i Streamlit vid Enter
         input.addEventListener('keydown', (e) => {{
             if (e.key === 'Enter') {{
                 window.parent.location.reload();
@@ -561,7 +559,7 @@ if query:
                         img.style.transform = 'scale(1) rotateX(0deg) rotateY(0deg)';
                         img.style.transition = 'transform 0.5s ease';
                     }});
-                }));
+                }});
             </script>
         </body>
         </html>
