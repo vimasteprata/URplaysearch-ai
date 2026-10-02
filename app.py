@@ -34,6 +34,21 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
+# JavaScript för att tvinga bort webbläsarens autocomplete-rutor på alla textfält
+st.markdown("""
+<script>
+    const observer = new MutationObserver(() => {
+        document.querySelectorAll('input[type="text"]').forEach(input => {
+            input.setAttribute('autocomplete', 'off');
+            input.setAttribute('autocorrect', 'off');
+            input.setAttribute('autocapitalize', 'off');
+            input.setAttribute('spellcheck', 'false');
+        });
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+</script>
+""", unsafe_allow_html=True)
+
 # Custom CSS för Streamlit-gränssnittet
 st.markdown("""
 <style>
@@ -100,7 +115,7 @@ st.markdown("""
         justify-content: center;
         gap: 12px;
         max-width: 600px;
-        margin: 0 auto 2rem auto;
+        margin: 0 auto 1.5rem auto;
     }
 
     div.stButton > button {
@@ -131,6 +146,26 @@ st.markdown("""
         box-shadow: 0 0 20px rgba(31, 111, 235, 0.5) !important;
     }
 
+    /* Snyggare styling för sökfältet */
+    .stTextInput input {
+        background-color: #0d111a !important;
+        color: #ffffff !important;
+        border: 1px solid rgba(255, 255, 255, 0.15) !important;
+        border-radius: 24px !important;
+        padding: 16px 24px !important;
+        font-size: 1.25rem !important;
+        font-weight: 600 !important;
+        text-align: center !important;
+        box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6) !important;
+        transition: all 0.4s ease !important;
+    }
+
+    .stTextInput input:focus {
+        border-color: #a78bfa !important;
+        box-shadow: 0 0 25px rgba(167, 139, 250, 0.4) !important;
+        background-color: #111622 !important;
+    }
+
     div[data-testid="stSidebar"] {
         background-color: #0d111a;
         border-right: 1px solid #1f2430;
@@ -155,6 +190,11 @@ if "visible_count" not in st.session_state:
 
 if "search_query" not in st.session_state:
     st.session_state.search_query = "matematik på teckenspråk"
+
+# Hämta söksträng från URL om den finns vid start
+query_params = st.query_params
+if "q" in query_params:
+    st.session_state.search_query = query_params["q"]
 
 # Header
 st.markdown("""
@@ -191,85 +231,20 @@ with btn_col3:
 
 st.markdown('</div>', unsafe_allow_html=True)
 
-# Egen HTML-sökbox helt befriad från webbläsarens autocomplete-rutor
-search_component_html = f"""
-<!DOCTYPE html>
-<html>
-<head>
-<style>
-    body {{
-        background: transparent;
-        margin: 0;
-        padding: 10px;
-        display: flex;
-        justify-content: center;
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-    }}
-    .search-wrapper {{
-        width: 100%;
-        max-width: 720px;
-        background: #0d111a;
-        border-radius: 24px;
-        border: 1px solid rgba(255, 255, 255, 0.15);
-        padding: 10px 20px;
-        box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6);
-        transition: all 0.4s ease;
-        display: flex;
-        align-items: center;
-    }}
-    @keyframes siriGlow {{
-        0% {{ box-shadow: 0 0 20px rgba(167, 139, 250, 0.5), 0 0 40px rgba(96, 165, 250, 0.3); }}
-        50% {{ box-shadow: 0 0 30px rgba(244, 114, 182, 0.6), 0 0 50px rgba(167, 139, 250, 0.4); }}
-        100% {{ box-shadow: 0 0 20px rgba(167, 139, 250, 0.5), 0 0 40px rgba(96, 165, 250, 0.3); }}
-    }}
-    .search-wrapper:focus-within {{
-        border-color: #a78bfa;
-        animation: siriGlow 3s infinite ease-in-out;
-        background: #111622;
-        transform: scale(1.015);
-    }}
-    .search-input {{
-        width: 100%;
-        background: transparent;
-        border: none;
-        color: #ffffff;
-        font-size: 1.25rem;
-        font-weight: 600;
-        text-align: center;
-        outline: none;
-        padding: 8px 0;
-    }}
-</style>
-</head>
-<body>
-    <div class="search-wrapper">
-        <input type="text" id="searchInput" class="search-input" value="{st.session_state.search_query}" placeholder="🔍 Sök vad du vill titta på..." autocomplete="off" spellcheck="false">
-    </div>
-    <script>
-        const input = document.getElementById('searchInput');
-        input.addEventListener('input', (e) => {{
-            const url = new URL(window.parent.location.href);
-            url.searchParams.set('q', e.target.value);
-            window.parent.history.replaceState({{}}, '', url);
-        }});
-        
-        input.addEventListener('keydown', (e) => {{
-            if (e.key === 'Enter') {{
-                window.parent.location.reload();
-            }}
-        }});
-    </script>
-</body>
-</html>
-"""
+# Centrerat sökfält utan helsidesomladdning
+col_space1, col_search, col_space2 = st.columns([1, 2, 1])
+with col_search:
+    query = st.text_input(
+        "Sökfält",
+        value=st.session_state.search_query,
+        placeholder="🔍 Sök vad du vill titta på...",
+        label_visibility="collapsed"
+    )
 
-# Hämta söksträng från URL eller session state
-query_params = st.query_params
-if "q" in query_params:
-    st.session_state.search_query = query_params["q"]
-
-components.html(search_component_html, height=90)
-query = st.session_state.search_query
+# Uppdatera URL och session state direkt om sökordet ändras
+if query != st.session_state.search_query:
+    st.session_state.search_query = query
+    st.query_params["q"] = query
 
 with st.sidebar:
     st.markdown("### 🎛️ Inställningar")
@@ -298,13 +273,27 @@ if query:
             results = collection.query(query_texts=[search_text], n_results=fetch_limit)
 
         all_matching_results = []
+        query_words = [w.lower() for w in search_text.split() if len(w) > 2]
         
         if results and "ids" in results and len(results["ids"][0]) > 0:
             for i in range(len(results["ids"][0])):
                 meta = results["metadatas"][0][i]
                 doc = results["documents"][0][i]
                 dist = results["distances"][0][i]
-                match_pct = round(max(0, (1 - dist) * 100), 1)
+                base_match_pct = round(max(0, (1 - dist) * 100), 1)
+                
+                # Smart sökordsboost: Prioritera träffar där sökordet (t.ex. "sagor") finns i titeln
+                title_lower = str(meta.get("title", "")).lower()
+                series_lower = str(meta.get("series_title", "")).lower()
+                
+                boost = 0
+                for qw in query_words:
+                    if qw in title_lower:
+                        boost += 25  # Stark boost om sökordet finns i titeln
+                    elif qw in series_lower:
+                        boost += 15  # Boost om det finns i serietiteln
+                        
+                match_pct = min(100.0, base_match_pct + boost)
                 
                 kind_str = str(meta.get("kind", "")).lower()
                 url_str = str(meta.get("url", "")).lower()
@@ -322,6 +311,9 @@ if query:
                     "match_pct": match_pct,
                     "is_episode": is_episode
                 })
+                
+        # Sortera efter den nya förbättrade matchningsprocenten (exakta träffar överst)
+        all_matching_results.sort(key=lambda x: x["match_pct"], reverse=True)
                 
         visible_items = all_matching_results[:st.session_state.visible_count]
         
@@ -525,7 +517,7 @@ if query:
                 transition: all 0.2s ease;
             }}
             .play-button:hover {{
-                background: linear-gradient(90deg, #1f6feb 0%, #388bfd 100%);
+                background: linear-gradient(90deg, #1f6feb 100%, #388bfd 100%);
                 transform: scale(1.02);
             }}
         </style>
@@ -559,7 +551,7 @@ if query:
                         img.style.transform = 'scale(1) rotateX(0deg) rotateY(0deg)';
                         img.style.transition = 'transform 0.5s ease';
                     }});
-                }});
+                }));
             </script>
         </body>
         </html>
