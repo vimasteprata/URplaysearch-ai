@@ -180,12 +180,12 @@ def load_db():
     client = chromadb.PersistentClient(path="./urplay_chroma_db")
     return client.get_collection(name="urplay_programs", embedding_function=ef)
 
-# Session states
+# Session states (ökade initiala träffar till 18 för ett mer generöst flöde)
 if "kind_type" not in st.session_state:
     st.session_state.kind_type = "Båda"
 
 if "visible_count" not in st.session_state:
-    st.session_state.visible_count = 12
+    st.session_state.visible_count = 18
 
 if "search_query" not in st.session_state:
     st.session_state.search_query = "matematik på teckenspråk"
@@ -213,19 +213,19 @@ btn_col1, btn_col2, btn_col3 = st.columns([1, 1, 1])
 with btn_col1:
     if st.button("📁 Enbart Program", use_container_width=True, type="primary" if st.session_state.kind_type == "Program" else "secondary"):
         st.session_state.kind_type = "Program"
-        st.session_state.visible_count = 12
+        st.session_state.visible_count = 18
         st.rerun()
 
 with btn_col2:
     if st.button("📺 Enbart Avsnitt", use_container_width=True, type="primary" if st.session_state.kind_type == "Avsnitt" else "secondary"):
         st.session_state.kind_type = "Avsnitt"
-        st.session_state.visible_count = 12
+        st.session_state.visible_count = 18
         st.rerun()
 
 with btn_col3:
     if st.button("🎬 Båda", use_container_width=True, type="primary" if st.session_state.kind_type == "Båda" else "secondary"):
         st.session_state.kind_type = "Båda"
-        st.session_state.visible_count = 12
+        st.session_state.visible_count = 18
         st.rerun()
 
 st.markdown('</div>', unsafe_allow_html=True)
@@ -253,11 +253,33 @@ if query:
         collection = load_db()
         query_lower = query.lower()
         
-        # Utökat stöd för teckenspråk, TAKK och tecken som stöd
+        # Speciella språkhanteringar för att inte drunkna i enbart språkkategorin (t.ex. "matematik på finska")
+        language_mappings = {
+            "finska": ["finska", "suomi"],
+            "finskt": ["finska", "suomi"],
+            "meänkieli": ["meänkieli"],
+            "samiska": ["samiska", "nordsamiska"],
+            "romani": ["romani"],
+            "jiddisch": ["jiddisch"]
+        }
+        
+        active_language_terms = []
+        for lang_key, terms in language_mappings.items():
+            if lang_key in query_lower:
+                active_language_terms.extend(terms)
+
         sign_terms = ["teckenspråk", "teckenspråkstolkad", "takk", "tecken som stöd"]
         is_sign_search = any(term in query_lower for term in sign_terms) or only_sign_language
 
-        if is_sign_search:
+        # Om sökningen är typ "ämne + på + språk", se till att söktexten fokuserar på kärnämnet
+        if active_language_terms and not is_sign_search:
+            clean_query = query_lower
+            for lang_key in language_mappings.keys():
+                clean_query = clean_query.replace(lang_key, "")
+            clean_query = clean_query.replace("på", "").replace("i", "").strip()
+            # Om rensningen lämnar kvar något bra (t.ex. "matematik"), prioritera det men behåll språkvikten
+            search_text = clean_query if len(clean_query) > 2 else query
+        elif is_sign_search:
             clean_query = query_lower
             for term in sign_terms:
                 clean_query = clean_query.replace(term, "")
@@ -266,7 +288,8 @@ if query:
         else:
             search_text = query
 
-        fetch_limit = 300
+        # Höjt hämtningsfönster från 300 till 600 för att få bredare träffunderlag
+        fetch_limit = 600
         results = collection.query(query_texts=[search_text], n_results=fetch_limit)
 
         all_matching_results = []
@@ -284,21 +307,32 @@ if query:
                 doc_lower = str(doc).lower()
                 combined_text = f"{title_lower} {series_lower} {doc_lower}"
                 
-                # Kontrollera om träffen matchar teckenspråk/TAKK om användaren söker efter det
+                # Filterkontroll för teckenspråk
                 is_sign_item = meta.get("is_sign_language") or any(t in combined_text for t in sign_terms)
                 if is_sign_search and not is_sign_item and not only_sign_language:
                     continue
 
-                # Smart sökordsboost & straff för ovidkommande resultat vid specifika sökord (t.ex. sagor)
+                # Filterkontroll för språk om användaren söker specifikt på språk (t.ex. finska)
+                if active_language_terms:
+                    has_lang = any(l_term in combined_text for l_term in active_language_terms)
+                    # Om sökningen gällde ett ämne på ett språk, kräv inte hundraprocentig exakt match i språkkoden om ämnet är klockrent,
+                    # men ge dem en ordentlig boost om språket matchar, och undvik helt orelaterat brus.
+                    if not has_lang and not any(qw in combined_text for qw in query_words):
+                        continue
+
+                # Smart sökordsboost
                 boost = 0
-                
                 for qw in query_words:
                     if qw in title_lower:
-                        boost += 30
+                        boost += 35
                     elif qw in series_lower:
-                        boost += 20
+                        boost += 25
                     elif qw in doc_lower:
-                        boost += 5
+                        boost += 8
+
+                # Om språket matchar vid en språksökning, ge extra kärleksboost
+                if active_language_terms and any(l_term in combined_text for l_term in active_language_terms):
+                    boost += 20
 
                 # Om sökordet innehåller specifika ämnen som "saga/sagor", straffa om det inte ens nämns i texten
                 if any(w in query_lower for w in ["saga", "sagor", "berättelse"]):
@@ -581,7 +615,7 @@ if query:
             load_col1, load_col2, load_col3 = st.columns([2, 2, 2])
             with load_col2:
                 if st.button("➕ Visa fler resultat", use_container_width=True):
-                    st.session_state.visible_count += 12
+                    st.session_state.visible_count += 18
                     st.rerun()
 
     except Exception as e:
