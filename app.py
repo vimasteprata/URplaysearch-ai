@@ -46,6 +46,16 @@ st.markdown("""
         color: #e6edf3;
     }
 
+    /* Fix för att Streamlits standard-topbar inte ska blockera sökfältet */
+    header[data-testid="stHeader"] {
+        background: transparent !important;
+        pointer-events: none;
+    }
+    
+    header[data-testid="stHeader"] * {
+        pointer-events: auto;
+    }
+
     /* Header & Logga */
     .brand-header {
         display: flex;
@@ -129,10 +139,10 @@ st.markdown("""
         box-shadow: 0 0 20px rgba(31, 111, 235, 0.5) !important;
     }
 
-    /* Sökfält */
+    /* Sökfält med extra säkerhetsmarginal uppåt */
     div[data-testid="stTextInput"] {
         max-width: 720px;
-        margin: 0 auto 3rem auto;
+        margin: 2rem auto 3rem auto !important;
     }
 
     div[data-testid="stTextInput"] > div > div {
@@ -524,7 +534,7 @@ if query:
                         img.style.transform = 'scale(1) rotateX(0deg) rotateY(0deg)';
                         img.style.transition = 'transform 0.5s ease';
                     }});
-                }});
+                }));
             </script>
         </body>
         </html>
