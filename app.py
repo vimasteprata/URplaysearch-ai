@@ -2,6 +2,7 @@ import os
 import zipfile
 import urllib.request
 import streamlit as st
+import streamlit.components.v1 as components
 import chromadb
 from chromadb.utils import embedding_functions
 
@@ -286,28 +287,23 @@ if query:
                 # Kontrollera om träffen matchar teckenspråk/TAKK om användaren söker efter det
                 is_sign_item = meta.get("is_sign_language") or any(t in combined_text for t in sign_terms)
                 if is_sign_search and not is_sign_item and not only_sign_language:
-                    # Om sökningen gällde teckenspråk/TAKK men objektet saknar det helt, hoppa över eller sänk kraftigt
                     continue
 
                 # Smart sökordsboost & straff för ovidkommande resultat vid specifika sökord (t.ex. sagor)
                 boost = 0
-                has_keyword_match = False
                 
                 for qw in query_words:
                     if qw in title_lower:
                         boost += 30
-                        has_keyword_match = True
                     elif qw in series_lower:
                         boost += 20
-                        has_keyword_match = True
                     elif qw in doc_lower:
                         boost += 5
-                        has_keyword_match = True
 
-                # Om sökordet innehåller specifika ämnen som "sga/sagor", straffa om det inte ens nämns i texten
+                # Om sökordet innehåller specifika ämnen som "saga/sagor", straffa om det inte ens nämns i texten
                 if any(w in query_lower for w in ["saga", "sagor", "berättelse"]):
                     if not any(w in combined_text for w in ["saga", "sagor", "berättelse"]):
-                        base_match_pct *= 0.2  # Sänk irrelevant skräp kraftigt
+                        base_match_pct *= 0.2
                 
                 match_pct = min(100.0, base_match_pct + boost)
                 
@@ -569,7 +565,7 @@ if query:
                         img.style.transform = 'scale(1) rotateX(0deg) rotateY(0deg)';
                         img.style.transition = 'transform 0.5s ease';
                     }});
-                }));
+                }});
             </script>
         </body>
         </html>
