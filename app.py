@@ -14,14 +14,11 @@ DB_DOWNLOAD_URL = "https://www.dropbox.com/scl/fi/7yisqlz86rzb1cmj0h3sr/urplay_c
 if not os.path.exists(DB_DIR):
     st.info("🚀 Första uppstart i molnet: Laddar ner och packar upp UR Play-databasen (125 MB) från Dropbox... Detta kan ta en liten stund.")
     
-    # Ladda ner filen
     urllib.request.urlretrieve(DB_DOWNLOAD_URL, ZIP_FILE)
     
-    # Packa upp zip-filen
     with zipfile.ZipFile(ZIP_FILE, 'r') as zip_ref:
         zip_ref.extractall(".")
         
-    # Ta bort zip-filen för att spara utrymme på servern
     if os.path.exists(ZIP_FILE):
         os.remove(ZIP_FILE)
     
@@ -37,16 +34,14 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# Custom CSS för Streamlit-gränssnittet (sökfält, knappar m.m.)
+# Custom CSS för Streamlit-gränssnittet
 st.markdown("""
 <style>
-    /* Mörkt tema & bakgrund */
     .stApp {
         background-color: #06080d;
         color: #e6edf3;
     }
 
-    /* Fix för att Streamlits standard-topbar inte ska blockera */
     header[data-testid="stHeader"] {
         background: transparent !important;
         pointer-events: none;
@@ -56,7 +51,6 @@ st.markdown("""
         pointer-events: auto;
     }
 
-    /* Header & Logga */
     .brand-header {
         display: flex;
         flex-direction: column;
@@ -101,7 +95,6 @@ st.markdown("""
         margin-top: -6px;
     }
 
-    /* Centrera knapp-raden */
     .button-container {
         display: flex;
         justify-content: center;
@@ -110,7 +103,6 @@ st.markdown("""
         margin: 0 auto 2rem auto;
     }
 
-    /* Styling för Streamlits knappar */
     div.stButton > button {
         background-color: rgba(255, 255, 255, 0.04) !important;
         color: #98a6b5 !important;
@@ -139,50 +131,6 @@ st.markdown("""
         box-shadow: 0 0 20px rgba(31, 111, 235, 0.5) !important;
     }
 
-    /* Sökfält med extra säkerhetsmarginal uppåt */
-    div[data-testid="stTextInput"] {
-        max-width: 720px;
-        margin: 2rem auto 3rem auto !important;
-    }
-
-    div[data-testid="stTextInput"] > div > div {
-        background: #0d111a !important;
-        border-radius: 24px !important;
-        border: 1px solid rgba(255, 255, 255, 0.15) !important;
-        padding: 10px 20px !important;
-        box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6);
-        transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-        position: relative;
-    }
-
-    @keyframes siriGlow {
-        0% { box-shadow: 0 0 20px rgba(167, 139, 250, 0.5), 0 0 40px rgba(96, 165, 250, 0.3); }
-        50% { box-shadow: 0 0 30px rgba(244, 114, 182, 0.6), 0 0 50px rgba(167, 139, 250, 0.4); }
-        100% { box-shadow: 0 0 20px rgba(167, 139, 250, 0.5), 0 0 40px rgba(96, 165, 250, 0.3); }
-    }
-
-    div[data-testid="stTextInput"] > div > div:focus-within {
-        border-color: #a78bfa !important;
-        animation: siriGlow 3s infinite ease-in-out;
-        background: #111622 !important;
-        transform: scale(1.015);
-    }
-
-    div[data-testid="stTextInput"] input {
-        color: #ffffff !important;
-        font-size: 1.25rem !important;
-        font-weight: 600 !important;
-        text-align: center !important;
-        padding: 8px 0 !important;
-    }
-
-    /* Fix för att ta bort eller stajla den svarta popup-rutan/historiken vid sök */
-    div[data-baseweb="popover"], div[data-baseweb="menu"] {
-        background-color: #0d111a !important;
-        border: 1px solid rgba(255, 255, 255, 0.15) !important;
-        border-radius: 12px !important;
-    }
-
     div[data-testid="stSidebar"] {
         background-color: #0d111a;
         border-right: 1px solid #1f2430;
@@ -205,8 +153,8 @@ if "kind_type" not in st.session_state:
 if "visible_count" not in st.session_state:
     st.session_state.visible_count = 12
 
-if "last_query" not in st.session_state:
-    st.session_state.last_query = ""
+if "search_query" not in st.session_state:
+    st.session_state.search_query = "matematik på teckenspråk"
 
 # Header
 st.markdown("""
@@ -243,12 +191,87 @@ with btn_col3:
 
 st.markdown('</div>', unsafe_allow_html=True)
 
-# Sökfält
-query = st.text_input("", value="matematik på teckenspråk", placeholder="🔍 Sök vad du vill titta på...")
+# Egen HTML-sökbox helt befriad från webbläsarens autocomplete-rutor
+search_component_html = f"""
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+    body {{
+        background: transparent;
+        margin: 0;
+        padding: 10px;
+        display: flex;
+        justify-content: center;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }}
+    .search-wrapper {{
+        width: 100%;
+        max-width: 720px;
+        background: #0d111a;
+        border-radius: 24px;
+        border: 1px solid rgba(255, 255, 255, 0.15);
+        padding: 10px 20px;
+        box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6);
+        transition: all 0.4s ease;
+        display: flex;
+        align-items: center;
+    }}
+    @keyframes siriGlow {{
+        0% {{ box-shadow: 0 0 20px rgba(167, 139, 250, 0.5), 0 0 40px rgba(96, 165, 250, 0.3); }}
+        50% {{ box-shadow: 0 0 30px rgba(244, 114, 182, 0.6), 0 0 50px rgba(167, 139, 250, 0.4); }}
+        100% {{ box-shadow: 0 0 20px rgba(167, 139, 250, 0.5), 0 0 40px rgba(96, 165, 250, 0.3); }}
+    }}
+    .search-wrapper:focus-within {{
+        border-color: #a78bfa;
+        animation: siriGlow 3s infinite ease-in-out;
+        background: #111622;
+        transform: scale(1.015);
+    }}
+    .search-input {{
+        width: 100%;
+        background: transparent;
+        border: none;
+        color: #ffffff;
+        font-size: 1.25rem;
+        font-weight: 600;
+        text-align: center;
+        outline: none;
+        padding: 8px 0;
+    }}
+</style>
+</head>
+<body>
+    <div class="search-wrapper">
+        <input type="text" id="searchInput" class="search-input" value="{st.session_state.search_query}" placeholder="🔍 Sök vad du vill titta på..." autocomplete="off" spellcheck="false">
+    </div>
+    <script>
+        const input = document.getElementById('searchInput');
+        input.addEventListener('input', (e) => {{
+            // Skicka sökordet till Streamlit via URL-parameter
+            const url = new URL(window.parent.location.href);
+            url.searchParams.set('q', e.target.value);
+            window.parent.history.replaceState({{}}, '', url);
+        }});
+        
+        // Trigga en uppdatering i Streamlit vid Enter
+        input.addEventListener('keydown', (e) => {{
+            if (e.key === 'Enter') {{
+                window.parent.location.reload();
+            }}
+        }});
+    </script>
+</body>
+</html>
+"""
 
-if query != st.session_state.last_query:
-    st.session_state.visible_count = 12
-    st.session_state.last_query = query
+# Hämta söksträng från URL eller session state
+query_params = st.query_params
+if "q" in query_params:
+    st.session_state.search_query = query_params["q"]
+
+components.html(search_component_html, height=90)
+query = st.session_state.search_query
 
 with st.sidebar:
     st.markdown("### 🎛️ Inställningar")
@@ -538,7 +561,7 @@ if query:
                         img.style.transform = 'scale(1) rotateX(0deg) rotateY(0deg)';
                         img.style.transition = 'transform 0.5s ease';
                     }});
-                }});
+                }));
             </script>
         </body>
         </html>
