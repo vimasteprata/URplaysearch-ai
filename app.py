@@ -2,7 +2,6 @@ import os
 import zipfile
 import urllib.request
 import streamlit as st
-import streamlit.components.v1 as components
 import chromadb
 from chromadb.utils import embedding_functions
 
@@ -146,7 +145,6 @@ st.markdown("""
         box-shadow: 0 0 20px rgba(31, 111, 235, 0.5) !important;
     }
 
-    /* Snyggare styling för sökfältet */
     .stTextInput input {
         background-color: #0d111a !important;
         color: #ffffff !important;
@@ -241,36 +239,34 @@ with col_search:
         label_visibility="collapsed"
     )
 
-# Uppdatera URL och session state direkt om sökordet ändras
 if query != st.session_state.search_query:
     st.session_state.search_query = query
     st.query_params["q"] = query
 
 with st.sidebar:
     st.markdown("### 🎛️ Inställningar")
-    only_sign_language = st.checkbox("🤟 Enbart teckenspråk", value=False)
+    only_sign_language = st.checkbox("🤟 Enbart teckenspråk / TAKK", value=False)
 
 if query:
     try:
         collection = load_db()
         query_lower = query.lower()
         
-        is_sign_search = "teckenspråk" in query_lower or "teckenspråkstolkad" in query_lower or only_sign_language
+        # Utökat stöd för teckenspråk, TAKK och tecken som stöd
+        sign_terms = ["teckenspråk", "teckenspråkstolkad", "takk", "tecken som stöd"]
+        is_sign_search = any(term in query_lower for term in sign_terms) or only_sign_language
 
         if is_sign_search:
-            clean_query = query_lower.replace("på teckenspråk", "").replace("teckenspråkstolkad", "").replace("teckenspråk", "").strip()
+            clean_query = query_lower
+            for term in sign_terms:
+                clean_query = clean_query.replace(term, "")
+            clean_query = clean_query.replace("på", "").strip()
             search_text = clean_query if clean_query else query
-            where_filter = {"is_sign_language": True}
         else:
             search_text = query
-            where_filter = None
 
         fetch_limit = 300
-        
-        if where_filter:
-            results = collection.query(query_texts=[search_text], n_results=fetch_limit, where=where_filter)
-        else:
-            results = collection.query(query_texts=[search_text], n_results=fetch_limit)
+        results = collection.query(query_texts=[search_text], n_results=fetch_limit)
 
         all_matching_results = []
         query_words = [w.lower() for w in search_text.split() if len(w) > 2]
@@ -282,17 +278,37 @@ if query:
                 dist = results["distances"][0][i]
                 base_match_pct = round(max(0, (1 - dist) * 100), 1)
                 
-                # Smart sökordsboost: Prioritera träffar där sökordet (t.ex. "sagor") finns i titeln
                 title_lower = str(meta.get("title", "")).lower()
                 series_lower = str(meta.get("series_title", "")).lower()
+                doc_lower = str(doc).lower()
+                combined_text = f"{title_lower} {series_lower} {doc_lower}"
                 
+                # Kontrollera om träffen matchar teckenspråk/TAKK om användaren söker efter det
+                is_sign_item = meta.get("is_sign_language") or any(t in combined_text for t in sign_terms)
+                if is_sign_search and not is_sign_item and not only_sign_language:
+                    # Om sökningen gällde teckenspråk/TAKK men objektet saknar det helt, hoppa över eller sänk kraftigt
+                    continue
+
+                # Smart sökordsboost & straff för ovidkommande resultat vid specifika sökord (t.ex. sagor)
                 boost = 0
+                has_keyword_match = False
+                
                 for qw in query_words:
                     if qw in title_lower:
-                        boost += 25  # Stark boost om sökordet finns i titeln
+                        boost += 30
+                        has_keyword_match = True
                     elif qw in series_lower:
-                        boost += 15  # Boost om det finns i serietiteln
-                        
+                        boost += 20
+                        has_keyword_match = True
+                    elif qw in doc_lower:
+                        boost += 5
+                        has_keyword_match = True
+
+                # Om sökordet innehåller specifika ämnen som "sga/sagor", straffa om det inte ens nämns i texten
+                if any(w in query_lower for w in ["saga", "sagor", "berättelse"]):
+                    if not any(w in combined_text for w in ["saga", "sagor", "berättelse"]):
+                        base_match_pct *= 0.2  # Sänk irrelevant skräp kraftigt
+                
                 match_pct = min(100.0, base_match_pct + boost)
                 
                 kind_str = str(meta.get("kind", "")).lower()
@@ -309,10 +325,11 @@ if query:
                     "meta": meta,
                     "doc": doc,
                     "match_pct": match_pct,
-                    "is_episode": is_episode
+                    "is_episode": is_episode,
+                    "is_sign": is_sign_item
                 })
                 
-        # Sortera efter den nya förbättrade matchningsprocenten (exakta träffar överst)
+        # Sortera efter matchningsprocent
         all_matching_results.sort(key=lambda x: x["match_pct"], reverse=True)
                 
         visible_items = all_matching_results[:st.session_state.visible_count]
@@ -328,6 +345,7 @@ if query:
             doc = item["doc"]
             match_pct = item["match_pct"]
             is_episode = item["is_episode"]
+            is_sign = item["is_sign"]
             
             raw_id = str(meta.get("id", ""))
             numeric_id = raw_id.split("-")[0] if "-" in raw_id else raw_id
@@ -340,8 +358,8 @@ if query:
             else:
                 badges += '<span class="badge badge-program">📁 SERIE / PROGRAM</span>'
             
-            if meta.get("is_sign_language") or "teckenspråk" in (meta.get("title","") + doc).lower():
-                badges += '<span class="badge badge-sign">🤟 TECKENSPRÅK</span>'
+            if is_sign:
+                badges += '<span class="badge badge-sign">🤟 TECKEN / TAKK</span>'
             
             series_html = f'<div class="series-name">Del av: {meta["series_title"]}</div>' if meta.get("series_title") else '<div class="series-name">&nbsp;</div>'
             image_html = f'<div class="card-image-container"><img src="{image_url}" class="card-image" alt="{meta["title"]}" onerror="this.parentNode.style.display=\'none\';"></div>' if image_url else ""
